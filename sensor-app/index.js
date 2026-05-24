@@ -1,7 +1,6 @@
 const mqtt = require("mqtt");
 const { InfluxDB, Point } = require("@influxdata/influxdb-client");
 
-// --- Configuration ---
 const MQTT_BROKER = "mqtt://localhost:1883";
 const MQTT_TOPIC = "#";
 
@@ -252,8 +251,6 @@ function addFieldsToPoint(point, fields) {
       if (key.endsWith("_count")) {
         point.intField(key, value);
       } else {
-        // Influx field types must stay stable per measurement, so store sensor
-        // measurements as floats even when a given sample looks integer-like.
         point.floatField(key, value);
       }
       fieldAdded = true;

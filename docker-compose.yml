@@ -11,7 +11,7 @@ services:
       - ./mosquitto/log:/mosquitto/log
     restart: always
     networks:
-      - iot-net
+      - iot-data-recorder
 
   influxdb:
     image: docker.arvancloud.ir/influxdb:2.7
@@ -37,7 +37,7 @@ services:
       start_period: 15s
     restart: always
     networks:
-      - iot-net
+      - iot-data-recorder
 
   nodered:
     image: docker.arvancloud.ir/nodered/node-red:latest
@@ -50,7 +50,7 @@ services:
       - TZ=UTC
     restart: always
     networks:
-      - iot-net
+      - iot-data-recorder
     depends_on:
       mosquitto:
         condition: service_started
@@ -58,7 +58,7 @@ services:
         condition: service_healthy
 
 networks:
-  iot-net:
+  iot-data-recorder:
     driver: bridge
 
 volumes:
