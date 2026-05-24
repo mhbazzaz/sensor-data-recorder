@@ -1,0 +1,39 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Runtime data
+mosquitto/data/
+mosquitto/log/
+node-red-data/.npm/
+node-red-data/.logs/
+node-red-data/.config.*.backup
+node-red-data/.config.runtime.json
+
+# Logs
+*.log
+logs/
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backups
+*.backup
+backup/
