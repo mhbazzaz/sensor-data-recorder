@@ -4,8 +4,8 @@
 
 ## 1. نصب Docker Desktop
 
-1. وارد سایت Docker شوید:
-   [https://www.docker.com/products/docker-desktop/](https://www.docker.com/products/docker-desktop/)
+1. Docker را از این آدرس دانلود کنید:
+   [دانلود Docker 4.52.0 - نرم افزار داکر](https://www.yasdl.com/309404/%D8%AF%D8%A7%D9%86%D9%84%D9%88%D8%AF-docker.html)
 2. نسخه Windows را دانلود و نصب کنید.
 3. بعد از نصب، Docker Desktop را باز کنید.
 4. صبر کنید تا Docker کامل بالا بیاید.
@@ -13,8 +13,8 @@
 
 ## 2. نصب Node.js
 
-1. وارد سایت Node.js شوید:
-   [https://nodejs.org/](https://nodejs.org/)
+1. Node.js را از این آدرس دانلود کنید:
+   [دانلود Node.js 26.2.0 Win/Mac](https://www.yasdl.com/176044/%D8%AF%D8%A7%D9%86%D9%84%D9%88%D8%AF-node-js.html)
 2. نسخه `LTS` را دانلود و نصب کنید.
 3. در مراحل نصب، گزینه‌های پیش‌فرض را نگه دارید.
 4. بعد از نصب، یک PowerShell باز کنید و این دستور را بزنید:
