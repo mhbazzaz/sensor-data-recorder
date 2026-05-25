@@ -124,20 +124,16 @@ try {
 
     Write-Host "[4/5] Starting Node apps..."
     $ReceiverLog = Join-Path $LogDir "receiver.log"
-    $MockLog = Join-Path $LogDir "mock-sensor.log"
     $BackupLog = Join-Path $LogDir "backup-influx.log"
 
     Set-Content -Path $ReceiverLog -Value ""
-    Set-Content -Path $MockLog -Value ""
     Set-Content -Path $BackupLog -Value ""
 
     $AppProcesses += Start-App -FilePath "node" -Arguments "`"$SensorAppDir\index.js`"" -LogPath $ReceiverLog
-    Start-Sleep -Seconds 2
-    $AppProcesses += Start-App -FilePath "node" -Arguments "`"$SensorAppDir\mock-sensor.js`"" -LogPath $MockLog
     $AppProcesses += Start-App -FilePath "powershell" -Arguments "-ExecutionPolicy Bypass -File `"$AutoBackupScript`"" -LogPath $BackupLog
     Start-Sleep -Seconds 5
 
-    Write-Host "       [OK] Receiver, mock sensors, and auto backup started"
+    Write-Host "       [OK] Receiver and auto backup started"
     Write-Host ""
 
     Write-Host "[5/5] Verifying data flow..."
@@ -187,7 +183,6 @@ try {
     Write-Host ""
     Write-Host "App logs saved to:"
     Write-Host "  $ReceiverLog"
-    Write-Host "  $MockLog"
     Write-Host "  $BackupLog"
     Write-Host ""
     Write-Host "Press Ctrl+C to stop the Node apps. Docker containers will stay running."
