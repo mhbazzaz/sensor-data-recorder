@@ -10,6 +10,7 @@ $InfluxOrg = "MohammadOrg"
 $InfluxBucket = "FactoryMetrics"
 
 $AppProcesses = @()
+$ComposeArgs = @()
 
 function Stop-AppProcesses {
     Write-Host ""
@@ -59,6 +60,18 @@ function Wait-ForHttp {
     }
 }
 
+function Invoke-Compose {
+    param(
+        [string[]]$ExtraArgs
+    )
+
+    if ($ComposeArgs.Count -eq 0) {
+        throw "Docker Compose command is not initialized."
+    }
+
+    & docker @ComposeArgs @ExtraArgs
+}
+
 try {
     New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 
@@ -82,10 +95,10 @@ try {
 
     try {
         docker compose version *> $null
-        $Compose = "docker compose"
+        $ComposeArgs = @("compose")
     } catch {
         if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
-            $Compose = "docker-compose"
+            $ComposeArgs = @()
         } else {
             Write-Host "[FAIL] Docker Compose not found."
             exit 1
@@ -96,11 +109,19 @@ try {
     Write-Host ""
 
     Write-Host "[1/5] Stopping existing containers..."
-    & powershell -NoProfile -Command "$Compose -f `"$ProjectRoot\docker-compose.yml`" down --remove-orphans 2>`$null"
+    if ($ComposeArgs.Count -gt 0) {
+        Invoke-Compose -ExtraArgs @("-f", "$ProjectRoot\docker-compose.yml", "down", "--remove-orphans") 2>$null
+    } else {
+        & docker-compose -f "$ProjectRoot\docker-compose.yml" down --remove-orphans 2>$null
+    }
     Write-Host ""
 
     Write-Host "[2/5] Starting services..."
-    & powershell -NoProfile -Command "$Compose -f `"$ProjectRoot\docker-compose.yml`" up -d"
+    if ($ComposeArgs.Count -gt 0) {
+        Invoke-Compose -ExtraArgs @("-f", "$ProjectRoot\docker-compose.yml", "up", "-d")
+    } else {
+        & docker-compose -f "$ProjectRoot\docker-compose.yml" up -d
+    }
     Write-Host ""
 
     Write-Host "[3/5] Waiting for services..."
@@ -145,7 +166,7 @@ try {
                 Accept = "application/csv"
                 "Content-Type" = "application/vnd.flux"
             }
-            $Body = "from(bucket: `"$InfluxBucket`") |> range(start: -2m) |> limit(n: 1)"
+            $Body = 'from(bucket: "{0}") |> range(start: -2m) |> limit(n: 1)' -f $InfluxBucket
             $Result = Invoke-RestMethod -Uri "http://localhost:8086/api/v2/query?org=$InfluxOrg" -Method Post -Headers $Headers -Body $Body
 
             if ($Result -match "_measurement") {

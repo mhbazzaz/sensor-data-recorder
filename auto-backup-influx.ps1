@@ -31,7 +31,7 @@ while ($true) {
     Write-Host "[$(Get-Timestamp)] [backup] Running backup..."
 
     try {
-        powershell -ExecutionPolicy Bypass -File $BackupScript
+        & $BackupScript
         Write-Host "[$(Get-Timestamp)] [backup] Backup completed successfully"
     } catch {
         Write-Host "[$(Get-Timestamp)] [backup] Backup failed"

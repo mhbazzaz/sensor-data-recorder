@@ -11,6 +11,22 @@ $InfluxToken = "SuperToken123456"
 $InfluxOrg = "MohammadOrg"
 $InfluxBucket = "FactoryMetrics"
 
+function Invoke-DockerCapture {
+    param(
+        [string[]]$Arguments
+    )
+
+    (& docker @Arguments).Trim()
+}
+
+function Invoke-DockerQuiet {
+    param(
+        [string[]]$Arguments
+    )
+
+    & docker @Arguments *> $null
+}
+
 Write-Host ""
 Write-Host "╔═══════════════════════════════════════════╗"
 Write-Host "║          InfluxDB Backup Utility          ║"
@@ -18,14 +34,14 @@ Write-Host "╚═════════════════════�
 Write-Host ""
 
 try {
-    docker info *> $null
+    Invoke-DockerQuiet -Arguments @("info")
 } catch {
     Write-Host "[FAIL] Docker is not running. Start Docker Desktop first."
     exit 1
 }
 
 try {
-    $ContainerStatus = (docker inspect -f "{{.State.Status}}" $ContainerName 2>$null).Trim()
+    $ContainerStatus = Invoke-DockerCapture -Arguments @("inspect", "-f", "{{.State.Status}}", $ContainerName)
 } catch {
     Write-Host "[FAIL] InfluxDB container '$ContainerName' was not found."
     exit 1
@@ -51,13 +67,13 @@ try {
 Write-Host ""
 
 Write-Host "[2/4] Creating backup inside container..."
-docker exec $ContainerName rm -rf $ContainerBackupDir *> $null
-docker exec $ContainerName influx backup $ContainerBackupDir --token $InfluxToken
+Invoke-DockerQuiet -Arguments @("exec", $ContainerName, "rm", "-rf", $ContainerBackupDir)
+& docker exec $ContainerName influx backup $ContainerBackupDir --token $InfluxToken
 Write-Host "       [OK] Backup created in container"
 Write-Host ""
 
 Write-Host "[3/4] Copying backup to host..."
-docker cp "${ContainerName}:${ContainerBackupDir}/." "$BackupDir/"
+& docker cp "${ContainerName}:${ContainerBackupDir}/." "$BackupDir/"
 Write-Host "       [OK] Backup copied to $BackupDir"
 Write-Host ""
 
@@ -94,7 +110,7 @@ Set-Content -Path (Join-Path $BackupDir "RESTORE-INFO.txt") -Value $RestoreInfo
 Write-Host "       [OK] Restore instructions saved"
 Write-Host ""
 
-docker exec $ContainerName rm -rf $ContainerBackupDir *> $null
+Invoke-DockerQuiet -Arguments @("exec", $ContainerName, "rm", "-rf", $ContainerBackupDir)
 Set-Content -Path (Join-Path $BackupDir "LAST-BACKUP.txt") -Value $Timestamp
 
 Write-Host "╔═══════════════════════════════════════════╗"

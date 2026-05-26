@@ -70,6 +70,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 powershell -ExecutionPolicy Bypass -File .\start.ps1
 ```
 
+این دستور همه بخش‌های لازم را از همان پنجره PowerShell اجرا می‌کند و پنجره PowerShell جداگانه‌ای برای بکاپ باز نمی‌شود.
+
 ## 7. کاری که اسکریپت انجام می‌دهد
 
 فایل `start.ps1` این کارها را انجام می‌دهد:
@@ -83,7 +85,7 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1
    - `nodered`
 5. صبر می‌کند تا سرویس‌ها آماده شوند.
 6. برنامه اصلی Node.js را اجرا می‌کند.
-7. بکاپ خودکار InfluxDB را هم اجرا می‌کند.
+7. بکاپ خودکار InfluxDB را هم داخل همان روند اجرایی فعال می‌کند.
 8. بررسی می‌کند که داده وارد InfluxDB شده باشد.
 
 ## 8. اگر اجرا موفق باشد
@@ -107,6 +109,8 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1
 - `logs\receiver.log`
 - `logs\backup-influx.log`
 
+لاگ‌ها داخل فایل ذخیره می‌شوند و پیام‌های بکاپ در پنجره جداگانه نمایش داده نمی‌شوند.
+
 ## 10. محل بکاپ‌ها
 
 بکاپ InfluxDB در این مسیر ذخیره می‌شود:
@@ -116,6 +120,7 @@ backups\influxdb\latest
 ```
 
 بکاپ خودکار هر روز ساعت `02:00 AM` اجرا می‌شود.
+این بکاپ از داخل همان اجرای `start.ps1` زمان‌بندی می‌شود و PowerShell جدیدی باز نمی‌کند.
 
 ## 11. توقف پروژه
 
