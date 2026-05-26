@@ -1,5 +1,3 @@
-$ErrorActionPreference = "Stop"
-
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SensorAppDir = Join-Path $ProjectRoot "sensor-app"
 $LogDir = Join-Path $ProjectRoot "logs"
@@ -51,7 +49,7 @@ function Wait-ForHttp {
 
     for ($i = 1; $i -le 30; $i++) {
         try {
-            Invoke-WebRequest -Uri $Url -UseBasicParsing | Out-Null
+            Invoke-WebRequest -Uri $Url -UseBasicParsing -ErrorAction Stop | Out-Null
             Write-Host "       $SuccessMessage ($i)"
             return
         } catch {
@@ -81,9 +79,13 @@ try {
     Write-Host "╚═══════════════════════════════════════════╝"
     Write-Host ""
 
-    try {
-        docker info *> $null
-    } catch {
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+        Write-Host "[FAIL] 'docker' command is not recognized. Please install Docker Desktop and add it to your PATH."
+        exit 1
+    }
+
+    & docker info > $null 2>&1
+    if ($LASTEXITCODE -ne 0) {
         Write-Host "[FAIL] Docker is not running. Start Docker Desktop first."
         exit 1
     }
@@ -93,11 +95,12 @@ try {
         exit 1
     }
 
-    try {
-        docker compose version *> $null
+    & docker compose version > $null 2>&1
+    if ($LASTEXITCODE -eq 0) {
         $ComposeArgs = @("compose")
-    } catch {
-        if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
+    } else {
+        & docker-compose version > $null 2>&1
+        if ($LASTEXITCODE -eq 0) {
             $ComposeArgs = @()
         } else {
             Write-Host "[FAIL] Docker Compose not found."
@@ -167,7 +170,7 @@ try {
                 "Content-Type" = "application/vnd.flux"
             }
             $Body = 'from(bucket: "{0}") |> range(start: -2m) |> limit(n: 1)' -f $InfluxBucket
-            $Result = Invoke-RestMethod -Uri "http://localhost:8086/api/v2/query?org=$InfluxOrg" -Method Post -Headers $Headers -Body $Body
+            $Result = Invoke-RestMethod -Uri "http://localhost:8086/api/v2/query?org=$InfluxOrg" -Method Post -Headers $Headers -Body $Body -ErrorAction Stop
 
             if ($Result -match "_measurement") {
                 $DataOk = $true

@@ -1,5 +1,3 @@
-$ErrorActionPreference = "Stop"
-
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackupScript = Join-Path $ProjectRoot "backup-influx.ps1"
 $BackupHour = 2

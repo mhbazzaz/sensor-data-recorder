@@ -1,5 +1,3 @@
-$ErrorActionPreference = "Stop"
-
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackupRoot = Join-Path $ProjectRoot "backups\influxdb"
 $BackupDir = Join-Path $BackupRoot "latest"
@@ -16,7 +14,9 @@ function Invoke-DockerCapture {
         [string[]]$Arguments
     )
 
-    (& docker @Arguments).Trim()
+    $Output = & docker @Arguments 2>$null
+    if ($LASTEXITCODE -ne 0) { throw "Docker command failed" }
+    return ($Output -join "`n").Trim()
 }
 
 function Invoke-DockerQuiet {
@@ -24,7 +24,8 @@ function Invoke-DockerQuiet {
         [string[]]$Arguments
     )
 
-    & docker @Arguments *> $null
+    & docker @Arguments > $null 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Docker command failed" }
 }
 
 Write-Host ""
@@ -59,7 +60,7 @@ New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
 
 Write-Host "[1/4] Checking InfluxDB health..."
 try {
-    Invoke-WebRequest -Uri "http://localhost:8086/health" -UseBasicParsing | Out-Null
+    Invoke-WebRequest -Uri "http://localhost:8086/health" -UseBasicParsing -ErrorAction Stop | Out-Null
     Write-Host "       [OK] InfluxDB is reachable"
 } catch {
     Write-Host "       [WARN] InfluxDB health endpoint did not respond, continuing with container backup"
