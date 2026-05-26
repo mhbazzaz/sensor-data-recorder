@@ -95,6 +95,11 @@ try {
         exit 1
     }
 
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+        Write-Host "[FAIL] npm is not installed (should be installed with Node.js)."
+        exit 1
+    }
+
     & docker compose version > $null 2>&1
     if ($LASTEXITCODE -eq 0) {
         $ComposeArgs = @("compose")
@@ -146,50 +151,20 @@ try {
     }
     Write-Host ""
 
-    Write-Host "[4/5] Starting Node apps..."
-    $ReceiverLog = Join-Path $LogDir "receiver.log"
-    $BackupLog = Join-Path $LogDir "backup-influx.log"
-
-    Set-Content -Path $ReceiverLog -Value ""
-    Set-Content -Path $BackupLog -Value ""
-
-    $AppProcesses += Start-App -FilePath "node" -Arguments "`"$SensorAppDir\index.js`"" -LogPath $ReceiverLog
-    $AppProcesses += Start-App -FilePath "powershell" -Arguments "-ExecutionPolicy Bypass -File `"$AutoBackupScript`"" -LogPath $BackupLog
-    Start-Sleep -Seconds 5
-
-    Write-Host "       [OK] Receiver and auto backup started"
+    Write-Host "[4/5] Installing Node dependencies..."
+    Push-Location $SensorAppDir
+    & npm install --silent > $null 2>&1
+    Pop-Location
+    Write-Host "       [OK] Packages installed"
     Write-Host ""
 
-    Write-Host "[5/5] Verifying data flow..."
-    $DataOk = $false
-    for ($Attempt = 1; $Attempt -le 3; $Attempt++) {
-        try {
-            $Headers = @{
-                Authorization = "Token $InfluxToken"
-                Accept = "application/csv"
-                "Content-Type" = "application/vnd.flux"
-            }
-            $Body = 'from(bucket: "{0}") |> range(start: -2m) |> limit(n: 1)' -f $InfluxBucket
-            $Result = Invoke-RestMethod -Uri "http://localhost:8086/api/v2/query?org=$InfluxOrg" -Method Post -Headers $Headers -Body $Body -ErrorAction Stop
+    Write-Host "[5/5] Starting background services..."
+    $BackupLog = Join-Path $LogDir "backup-influx.log"
+    Set-Content -Path $BackupLog -Value ""
 
-            if ($Result -match "_measurement") {
-                $DataOk = $true
-                break
-            }
-        } catch {
-        }
+    $AppProcesses += Start-App -FilePath "powershell" -Arguments "-ExecutionPolicy Bypass -File `"$AutoBackupScript`"" -LogPath $BackupLog
 
-        if ($Attempt -lt 3) {
-            Write-Host ("       No data yet, waiting 5s... (attempt {0}/3)" -f $Attempt)
-            Start-Sleep -Seconds 5
-        }
-    }
-
-    if ($DataOk) {
-        Write-Host "       [OK] Data is flowing to InfluxDB"
-    } else {
-        Write-Host "       [WARN] No data detected in InfluxDB yet"
-    }
+    Write-Host "       [OK] Auto backup started"
     Write-Host ""
 
     Write-Host "╔═══════════════════════════════════════════╗"
@@ -205,15 +180,17 @@ try {
     Write-Host "║                                           ║"
     Write-Host "╚═══════════════════════════════════════════╝"
     Write-Host ""
-    Write-Host "App logs saved to:"
-    Write-Host "  $ReceiverLog"
-    Write-Host "  $BackupLog"
+    Write-Host "Backup logs saved to: $BackupLog"
     Write-Host ""
-    Write-Host "Press Ctrl+C to stop the Node apps. Docker containers will stay running."
-    Write-Host ""
+    Write-Host "Starting sensor receiver (index.js) in the foreground..."
+    Write-Host "Press Ctrl+C to stop. Docker containers will stay running."
+    Write-Host "--------------------------------------------------------"
 
-    while ($true) {
-        Start-Sleep -Seconds 3600
+    Push-Location $SensorAppDir
+    try {
+        & node index.js
+    } finally {
+        Pop-Location
     }
 } finally {
     Stop-AppProcesses

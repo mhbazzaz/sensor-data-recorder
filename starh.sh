@@ -58,6 +58,11 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v npm >/dev/null 2>&1; then
+  echo "[FAIL] npm is not installed."
+  exit 1
+fi
+
 if ! docker compose version >/dev/null 2>&1 && ! docker-compose version >/dev/null 2>&1; then
   echo "[FAIL] Docker Compose not found."
   exit 1
@@ -108,7 +113,12 @@ for i in $(seq 1 30); do
 done
 echo ""
 
-echo "[4/5] Starting Node apps..."
+echo "[4/6] Installing Node dependencies..."
+(cd "${SENSOR_APP_DIR}" && npm install --silent >/dev/null 2>&1)
+echo "       [OK] Packages installed"
+echo ""
+
+echo "[5/6] Starting Node apps..."
 : >"${LOG_DIR}/receiver.log"
 : >"${LOG_DIR}/mock-sensor.log"
 : >"${LOG_DIR}/backup-influx.log"
@@ -117,10 +127,11 @@ sleep 2
 start_app "${LOG_DIR}/mock-sensor.log" node "${SENSOR_APP_DIR}/mock-sensor.js"
 start_app "${LOG_DIR}/backup-influx.log" bash "${AUTO_BACKUP_SCRIPT}"
 sleep 5
-echo "       [OK] Receiver, mock sensors, and auto backup started"
+
+echo "       [OK] Apps started in background"
 echo ""
 
-echo "[5/5] Verifying data flow..."
+echo "[6/6] Verifying data flow..."
 DATA_OK=false
 for attempt in 1 2 3; do
   RESULT=$(
