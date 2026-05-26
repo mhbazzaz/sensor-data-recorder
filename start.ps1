@@ -177,7 +177,7 @@ try {
         }
 
         if ($Attempt -lt 3) {
-            Write-Host "       No data yet, waiting 5s... (attempt $Attempt/3)"
+            Write-Host ("       No data yet, waiting 5s... (attempt {0}/3)" -f $Attempt)
             Start-Sleep -Seconds 5
         }
     }
