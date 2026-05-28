@@ -347,9 +347,6 @@ async function processMessage(topic, message) {
   try {
     writeApi.writePoint(point);
     await writeApi.flush();
-    console.log(
-      `[write] OK measurement=${measurement} fields=${Object.keys(fields).length}`,
-    );
   } catch (error) {
     console.error(`[write] FAILED measurement=${measurement}:`, error);
   }
