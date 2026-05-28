@@ -359,26 +359,55 @@ async function processMessage(topic, message) {
   console.log("===============================\n");
 }
 
-console.log("Connecting to MQTT Broker at:", MQTT_BROKER);
-const mqttClient = mqtt.connect(MQTT_BROKER);
+console.log("🚀 Starting Sensor Data Recorder...");
+console.log("");
+console.log("Configuration:");
+console.log(`   - MQTT Broker: ${MQTT_BROKER}`);
+console.log(`   - MQTT Topic: ${MQTT_TOPIC}`);
+console.log(`   - InfluxDB: ${INFLUXDB_URL}`);
+console.log(`   - InfluxDB Org: ${INFLUXDB_ORG}`);
+console.log(`   - InfluxDB Bucket: ${INFLUXDB_BUCKET}`);
+console.log("");
+
+const mqttClient = mqtt.connect(MQTT_BROKER, {
+  clientId: "sensor-data-recorder",
+  clean: true,
+  reconnectPeriod: 1000,
+  connectTimeout: 30 * 1000,
+  keepalive: 60,
+});
 
 mqttClient.on("connect", () => {
   console.log("✅ Connected to MQTT broker successfully!");
+  console.log(`📡 Subscribing to topic: ${MQTT_TOPIC}`);
   mqttClient.subscribe(MQTT_TOPIC, (err) => {
     if (!err) {
-      console.log(`📡 Subscribed to topic: ${MQTT_TOPIC}`);
-      console.log("Waiting for HMI data...");
+      console.log("✅ Subscription successful!");
+      console.log("");
+      console.log("👂 Waiting for ANY MQTT message...");
     } else {
-      console.error(`❌ Error subscribing to topic: ${err}`);
+      console.error(`❌ Error subscribing: ${err}`);
     }
   });
 });
 
+mqttClient.on("reconnect", () => {
+  console.log("🔄 Reconnecting to MQTT broker...");
+});
+
+mqttClient.on("offline", () => {
+  console.log("⚠️ MQTT client went offline!");
+});
+
 mqttClient.on("error", (error) => {
-  console.error("❌ MQTT connection error:", error);
+  console.error("❌ MQTT ERROR:", error);
 });
 
 mqttClient.on("message", (topic, message) => {
+  console.log(`\n📥 RAW message received on topic: ${topic}`);
+  console.log(`   Message length: ${message.length} bytes`);
+  console.log(`   Message preview: ${message.toString().substring(0, 150)}...`);
+  console.log("");
   processMessage(topic, message).catch((error) => {
     console.error("❌ Error processing message:", error);
   });
