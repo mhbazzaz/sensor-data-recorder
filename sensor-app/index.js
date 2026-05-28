@@ -1,13 +1,13 @@
 const mqtt = require("mqtt");
 const { InfluxDB, Point } = require("@influxdata/influxdb-client");
 
-const MQTT_BROKER = "mqtt://localhost:1883";
-const MQTT_TOPIC = "#";
+const MQTT_BROKER = process.env.MQTT_BROKER || "mqtt://localhost:1883";
+const MQTT_TOPIC = process.env.MQTT_TOPIC || "#";
 
-const INFLUXDB_URL = "http://localhost:8086";
-const INFLUXDB_TOKEN = "SuperToken123456";
-const INFLUXDB_ORG = "MohammadOrg";
-const INFLUXDB_BUCKET = "FactoryMetrics";
+const INFLUXDB_URL = process.env.INFLUXDB_URL || "http://localhost:8086";
+const INFLUXDB_TOKEN = process.env.INFLUXDB_TOKEN || "SuperToken123456";
+const INFLUXDB_ORG = process.env.INFLUXDB_ORG || "MohammadOrg";
+const INFLUXDB_BUCKET = process.env.INFLUXDB_BUCKET || "FactoryMetrics";
 
 const TAG_CANDIDATE_KEYS = new Set([
   "device",
@@ -41,7 +41,8 @@ const TIMESTAMP_KEYS = new Set([
 ]);
 
 const influxDB = new InfluxDB({ url: INFLUXDB_URL, token: INFLUXDB_TOKEN });
-const writeApi = influxDB.getWriteApi(INFLUXDB_ORG, INFLUXDB_BUCKET);
+const writeApi = influxDB.getWriteApi(INFLUXDB_ORG, INFLUXDB_BUCKET, "ms");
+writeApi.useDefaultTags({ source: "sensor-app" });
 
 function isPlainObject(value) {
   return (
@@ -63,25 +64,11 @@ function sanitizeKey(value) {
 }
 
 function topicToMeasurement(topic) {
-  // If the topic is empty or invalid, fallback to "default_measurement"
   if (!topic || typeof topic !== "string") {
-    return "default_measurement";
+    return "mqtt_message";
   }
 
-  const sanitized = sanitizeKey(topic.replace(/\//g, "_"));
-
-  // If sanitizeKey returns "value" (which it does as a fallback),
-  // return the actual topic name sanitized manually, or a specific fallback.
-  if (sanitized === "value") {
-    const manualSanitize = topic
-      .trim()
-      .replace(/[^a-zA-Z0-9]+/g, "_")
-      .replace(/^_+|_+$/g, "")
-      .toLowerCase();
-    return manualSanitize || "sensor";
-  }
-
-  return sanitized;
+  return sanitizeKey(topic.replace(/\//g, "_")) || "mqtt_message";
 }
 
 function parseScalarPayload(payload) {
@@ -107,20 +94,37 @@ function parseScalarPayload(payload) {
   return payload;
 }
 
+function extractJsonCandidate(payload) {
+  const trimmed = payload.trim();
+  const objectStart = trimmed.indexOf("{");
+  const arrayStart = trimmed.indexOf("[");
+
+  let startIndex = -1;
+  if (objectStart >= 0 && arrayStart >= 0) {
+    startIndex = Math.min(objectStart, arrayStart);
+  } else if (objectStart >= 0) {
+    startIndex = objectStart;
+  } else if (arrayStart >= 0) {
+    startIndex = arrayStart;
+  }
+
+  if (startIndex < 0) {
+    return trimmed;
+  }
+
+  return trimmed.slice(startIndex);
+}
+
 function parseIncomingPayload(payload) {
+  const trimmed = payload.trim();
+
   try {
-    return JSON.parse(payload);
-  } catch (error) {
+    return JSON.parse(trimmed);
+  } catch (firstError) {
     try {
-      let cleanedPayload = payload.trim();
-      if (/^[a-zA-Z0-9_]+\s*\{/.test(cleanedPayload)) {
-        cleanedPayload = cleanedPayload.replace(/^[a-zA-Z0-9_]+\s*/, "");
-      }
-      return JSON.parse(cleanedPayload);
-    } catch (e) {
-      console.log(`⚠️ Failed to parse JSON: ${e.message}`);
-      console.log(`   Raw payload preview: ${payload.substring(0, 200)}...`);
-      return null;
+      return JSON.parse(extractJsonCandidate(trimmed));
+    } catch (secondError) {
+      return parseScalarPayload(trimmed);
     }
   }
 }
@@ -199,7 +203,6 @@ function collectValues(value, currentPath, fields, notes) {
 
   if (Array.isArray(value)) {
     addField(fields, `${safePath}_count`, value.length);
-    addField(fields, `${safePath}_json`, JSON.stringify(value));
 
     value.forEach((item, index) => {
       collectValues(item, `${safePath}_${index}`, fields, notes);
@@ -276,7 +279,7 @@ function addFieldsToPoint(point, fields) {
 
   for (const [key, value] of Object.entries(fields)) {
     if (typeof value === "number") {
-      if (key.endsWith("_count")) {
+      if (Number.isInteger(value) && key.endsWith("_count")) {
         point.intField(key, value);
       } else {
         point.floatField(key, value);
@@ -295,18 +298,17 @@ function addFieldsToPoint(point, fields) {
 }
 
 async function processMessage(topic, message) {
-  console.log("\n===============================");
-  console.log(`📥 New message received on topic: ${topic}`);
-
   const payloadText = message.toString();
-  const parsedPayload = parseIncomingPayload(payloadText);
+  console.log(`[mqtt] topic=${topic} bytes=${message.length}`);
 
-  if (!parsedPayload) {
-    console.log("❌ Skipping invalid payload");
+  let parsedPayload;
+  try {
+    parsedPayload = parseIncomingPayload(payloadText);
+  } catch (error) {
+    console.error(`[parse] Failed to parse payload from ${topic}:`, error);
     return;
   }
 
-  console.log("✅ Payload parsed successfully");
   const normalizedPayload = buildNormalizedPayload(parsedPayload);
   const fields = {};
   const notes = [];
@@ -321,108 +323,99 @@ async function processMessage(topic, message) {
   const measurement = topicToMeasurement(topic);
   const point = new Point(measurement);
 
-  const tags = extractTags(fields, topic);
-  Object.entries(tags).forEach(([key, value]) => {
+  Object.entries(extractTags(fields, topic)).forEach(([key, value]) => {
     point.tag(key, value);
   });
 
   point.timestamp(timestamp);
 
-  const fieldAdded = addFieldsToPoint(point, fields);
-
-  console.log(
-    `📋 Fields extracted:`,
-    Object.keys(fields).slice(0, 10),
-    Object.keys(fields).length > 10
-      ? `...and ${Object.keys(fields).length - 10} more`
-      : "",
-  );
-
+  let fieldAdded = addFieldsToPoint(point, fields);
   if (!fieldAdded) {
-    console.log("⚠️ No fields found, saving raw payload");
-    point.stringField("raw_payload", payloadText);
+    point.stringField("raw_payload", payloadText.slice(0, 65000));
     point.stringField(
       "payload_type",
       Array.isArray(parsedPayload) ? "array" : typeof parsedPayload,
     );
+    fieldAdded = true;
   }
 
-  console.log(`💾 Writing to InfluxDB measurement: ${measurement}`);
-  writeApi.writePoint(point);
+  if (!fieldAdded) {
+    console.warn(`[write] No writable fields for topic ${topic}`);
+    return;
+  }
 
   try {
+    writeApi.writePoint(point);
     await writeApi.flush();
-    console.log("✅ Save to InfluxDB SUCCESS!");
-  } catch (err) {
-    console.log("❌ Save to InfluxDB FAILED:", err);
+    console.log(
+      `[write] OK measurement=${measurement} fields=${Object.keys(fields).length}`,
+    );
+  } catch (error) {
+    console.error(`[write] FAILED measurement=${measurement}:`, error);
   }
-  console.log("===============================\n");
 }
 
-console.log("🚀 Starting Sensor Data Recorder...");
-console.log("");
-console.log("Configuration:");
-console.log(`   - MQTT Broker: ${MQTT_BROKER}`);
-console.log(`   - MQTT Topic: ${MQTT_TOPIC}`);
-console.log(`   - InfluxDB: ${INFLUXDB_URL}`);
-console.log(`   - InfluxDB Org: ${INFLUXDB_ORG}`);
-console.log(`   - InfluxDB Bucket: ${INFLUXDB_BUCKET}`);
-console.log("");
+console.log("Starting Sensor Data Recorder");
+console.log(`MQTT Broker : ${MQTT_BROKER}`);
+console.log(`MQTT Topic  : ${MQTT_TOPIC}`);
+console.log(`InfluxDB    : ${INFLUXDB_URL}`);
+console.log(`Org/Bucket  : ${INFLUXDB_ORG} / ${INFLUXDB_BUCKET}`);
 
 const mqttClient = mqtt.connect(MQTT_BROKER, {
-  clientId: "sensor-data-recorder",
+  clientId: `sensor-data-recorder-${Math.random().toString(16).slice(2, 10)}`,
   clean: true,
   reconnectPeriod: 1000,
-  connectTimeout: 30 * 1000,
+  connectTimeout: 30000,
   keepalive: 60,
 });
 
 mqttClient.on("connect", () => {
-  console.log("✅ Connected to MQTT broker successfully!");
-  console.log(`📡 Subscribing to topic: ${MQTT_TOPIC}`);
-  mqttClient.subscribe(MQTT_TOPIC, (err) => {
-    if (!err) {
-      console.log("✅ Subscription successful!");
-      console.log("");
-      console.log("👂 Waiting for ANY MQTT message...");
-    } else {
-      console.error(`❌ Error subscribing: ${err}`);
+  console.log("[mqtt] Connected");
+  mqttClient.subscribe(MQTT_TOPIC, { qos: 1 }, (error) => {
+    if (error) {
+      console.error("[mqtt] Subscribe failed:", error);
+      return;
     }
+
+    console.log(`[mqtt] Subscribed to ${MQTT_TOPIC}`);
+    console.log("[mqtt] Waiting for messages...");
   });
 });
 
 mqttClient.on("reconnect", () => {
-  console.log("🔄 Reconnecting to MQTT broker...");
+  console.log("[mqtt] Reconnecting...");
 });
 
 mqttClient.on("offline", () => {
-  console.log("⚠️ MQTT client went offline!");
+  console.log("[mqtt] Offline");
 });
 
 mqttClient.on("error", (error) => {
-  console.error("❌ MQTT ERROR:", error);
+  console.error("[mqtt] Error:", error);
 });
 
 mqttClient.on("message", (topic, message) => {
-  console.log(`\n📥 RAW message received on topic: ${topic}`);
-  console.log(`   Message length: ${message.length} bytes`);
-  console.log(`   Message preview: ${message.toString().substring(0, 150)}...`);
-  console.log("");
   processMessage(topic, message).catch((error) => {
-    console.error("❌ Error processing message:", error);
+    console.error(`[mqtt] Unhandled processing error for ${topic}:`, error);
   });
 });
 
 process.on("SIGINT", async () => {
-  console.log("\nDisconnecting...");
-  mqttClient.end();
+  console.log("\nShutting down...");
+  mqttClient.end(true);
 
   try {
     await writeApi.close();
     console.log("InfluxDB write API closed.");
     process.exit(0);
   } catch (error) {
-    console.error("Error closing InfluxDB write API", error);
+    console.error("Error closing InfluxDB write API:", error);
     process.exit(1);
   }
 });
+
+
+
+// from(bucket: "FactoryMetrics")
+//   |> range(start: -1h)
+//   |> filter(fn: (r) => r["_measurement"] == "sensor")
