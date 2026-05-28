@@ -1,7 +1,7 @@
 const mqtt = require("mqtt");
 const { InfluxDB, Point } = require("@influxdata/influxdb-client");
 
-const MQTT_BROKER = process.env.MQTT_BROKER || "mqtt://localhost:1883";
+const MQTT_BROKER = process.env.MQTT_BROKER || "mqtt://127.0.0.1:1883";
 const MQTT_TOPIC = process.env.MQTT_TOPIC || "#";
 
 const INFLUXDB_URL = process.env.INFLUXDB_URL || "http://localhost:8086";
@@ -367,6 +367,8 @@ const mqttClient = mqtt.connect(MQTT_BROKER, {
   reconnectPeriod: 1000,
   connectTimeout: 30000,
   keepalive: 60,
+  family: 4,
+  protocolVersion: 4,
 });
 
 mqttClient.on("connect", () => {
@@ -413,8 +415,6 @@ process.on("SIGINT", async () => {
     process.exit(1);
   }
 });
-
-
 
 // from(bucket: "FactoryMetrics")
 //   |> range(start: -1h)
