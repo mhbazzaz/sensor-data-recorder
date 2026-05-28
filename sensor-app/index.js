@@ -111,21 +111,17 @@ function parseIncomingPayload(payload) {
   try {
     return JSON.parse(payload);
   } catch (error) {
-    // If standard JSON parse fails, try to fix common HMI JSON formatting issues
     try {
-      // Clean up the weird "Sensor { ... }" format to just "{ ... }"
       let cleanedPayload = payload.trim();
-
-      // If it starts with an identifier followed by {, strip the identifier
       if (/^[a-zA-Z0-9_]+\s*\{/.test(cleanedPayload)) {
         cleanedPayload = cleanedPayload.replace(/^[a-zA-Z0-9_]+\s*/, "");
       }
-
       return JSON.parse(cleanedPayload);
     } catch (e) {
-      // Ignore inner error
+      console.log(`⚠️ Failed to parse JSON: ${e.message}`);
+      console.log(`   Raw payload preview: ${payload.substring(0, 200)}...`);
+      return null;
     }
-    return parseScalarPayload(payload);
   }
 }
 
@@ -299,8 +295,18 @@ function addFieldsToPoint(point, fields) {
 }
 
 async function processMessage(topic, message) {
+  console.log("\n===============================");
+  console.log(`📥 New message received on topic: ${topic}`);
+
   const payloadText = message.toString();
   const parsedPayload = parseIncomingPayload(payloadText);
+
+  if (!parsedPayload) {
+    console.log("❌ Skipping invalid payload");
+    return;
+  }
+
+  console.log("✅ Payload parsed successfully");
   const normalizedPayload = buildNormalizedPayload(parsedPayload);
   const fields = {};
   const notes = [];
@@ -324,9 +330,16 @@ async function processMessage(topic, message) {
 
   const fieldAdded = addFieldsToPoint(point, fields);
 
-  console.log(`Received from ${topic}:`, fields);
+  console.log(
+    `📋 Fields extracted:`,
+    Object.keys(fields).slice(0, 10),
+    Object.keys(fields).length > 10
+      ? `...and ${Object.keys(fields).length - 10} more`
+      : "",
+  );
 
   if (!fieldAdded) {
+    console.log("⚠️ No fields found, saving raw payload");
     point.stringField("raw_payload", payloadText);
     point.stringField(
       "payload_type",
@@ -334,29 +347,40 @@ async function processMessage(topic, message) {
     );
   }
 
+  console.log(`💾 Writing to InfluxDB measurement: ${measurement}`);
   writeApi.writePoint(point);
-  await writeApi.flush();
 
-  console.log(` -> Saved to InfluxDB measurement: ${measurement}`);
+  try {
+    await writeApi.flush();
+    console.log("✅ Save to InfluxDB SUCCESS!");
+  } catch (err) {
+    console.log("❌ Save to InfluxDB FAILED:", err);
+  }
+  console.log("===============================\n");
 }
 
-console.log("Connecting to MQTT Broker...");
+console.log("Connecting to MQTT Broker at:", MQTT_BROKER);
 const mqttClient = mqtt.connect(MQTT_BROKER);
 
 mqttClient.on("connect", () => {
-  console.log("Connected to MQTT broker successfully");
+  console.log("✅ Connected to MQTT broker successfully!");
   mqttClient.subscribe(MQTT_TOPIC, (err) => {
     if (!err) {
-      console.log(`Subscribed to wildcard topic: ${MQTT_TOPIC}`);
+      console.log(`📡 Subscribed to topic: ${MQTT_TOPIC}`);
+      console.log("Waiting for HMI data...");
     } else {
-      console.error(`Error subscribing: ${err}`);
+      console.error(`❌ Error subscribing to topic: ${err}`);
     }
   });
 });
 
+mqttClient.on("error", (error) => {
+  console.error("❌ MQTT connection error:", error);
+});
+
 mqttClient.on("message", (topic, message) => {
   processMessage(topic, message).catch((error) => {
-    console.error(`Error processing message from ${topic}:`, error);
+    console.error("❌ Error processing message:", error);
   });
 });
 
