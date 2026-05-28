@@ -63,7 +63,25 @@ function sanitizeKey(value) {
 }
 
 function topicToMeasurement(topic) {
-  return sanitizeKey(topic.replace(/\//g, "_"));
+  // If the topic is empty or invalid, fallback to "default_measurement"
+  if (!topic || typeof topic !== "string") {
+    return "default_measurement";
+  }
+
+  const sanitized = sanitizeKey(topic.replace(/\//g, "_"));
+
+  // If sanitizeKey returns "value" (which it does as a fallback),
+  // return the actual topic name sanitized manually, or a specific fallback.
+  if (sanitized === "value") {
+    const manualSanitize = topic
+      .trim()
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .toLowerCase();
+    return manualSanitize || "sensor";
+  }
+
+  return sanitized;
 }
 
 function parseScalarPayload(payload) {
@@ -93,6 +111,17 @@ function parseIncomingPayload(payload) {
   try {
     return JSON.parse(payload);
   } catch (error) {
+    // If standard JSON parse fails, try to fix common HMI JSON formatting issues
+    try {
+      // Some HMIs send data like: Sensor { "Ave_Power": [ 55645 ] }
+      // This is not valid JSON. Let's try to extract just the JSON part.
+      const jsonMatch = payload.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+    } catch (e) {
+      // Ignore inner error
+    }
     return parseScalarPayload(payload);
   }
 }
