@@ -113,12 +113,15 @@ function parseIncomingPayload(payload) {
   } catch (error) {
     // If standard JSON parse fails, try to fix common HMI JSON formatting issues
     try {
-      // Some HMIs send data like: Sensor { "Ave_Power": [ 55645 ] }
-      // This is not valid JSON. Let's try to extract just the JSON part.
-      const jsonMatch = payload.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+      // Clean up the weird "Sensor { ... }" format to just "{ ... }"
+      let cleanedPayload = payload.trim();
+
+      // If it starts with an identifier followed by {, strip the identifier
+      if (/^[a-zA-Z0-9_]+\s*\{/.test(cleanedPayload)) {
+        cleanedPayload = cleanedPayload.replace(/^[a-zA-Z0-9_]+\s*/, "");
       }
+
+      return JSON.parse(cleanedPayload);
     } catch (e) {
       // Ignore inner error
     }
